@@ -1,25 +1,53 @@
-name: 微信每日推送
+name: Server酱 微信推送
 
 on:
+  # 定时触发：每天 UTC 0:30（北京时间 8:30）
   schedule:
-    - cron: '30 0 * * *'  # 每天UTC 0:30（北京时间8:30）
+    - cron: '30 0 * * *'
+  
+  # 允许手动触发
   workflow_dispatch:
 
 jobs:
   send-message:
     runs-on: ubuntu-latest
+    
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
-    - name: 安装依赖
-      run: pip install requests
-    - name: 运行推送
-      env:
-        CORP_ID: ${{ secrets.CORP_ID }}
-        AGENT_ID: ${{ secrets.AGENT_ID }}
-        AGENT_SECRET: ${{ secrets.AGENT_SECRET }}
-        OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
-        DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-      run: python main.py
+      # 1. 检出代码
+      - name: 检出代码
+        uses: actions/checkout@v3
+      
+      # 2. 设置 Python 环境
+      - name: 设置Python环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'  # 缓存pip包
+      
+      # 3. 安装依赖
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+      
+      # 4. 运行推送任务
+      - name: 运行推送任务
+        env:
+          # Server酱配置
+          SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
+          
+          # 其他API配置
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: python main.py
+      
+      # 5. 任务完成通知
+      - name: 任务状态
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Server酱推送任务执行成功！"
+          else
+            echo "❌ Server酱推送任务执行失败"
+            echo "请查看上方日志排查问题"
+          fi
