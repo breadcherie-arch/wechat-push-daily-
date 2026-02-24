@@ -16,7 +16,7 @@ TO_USER = "@all"  # 发送给所有人，或指定成员如"ZhangSan"
 DEEPSEEK_API_KEY = os.getenv("sk-b577b49ba9204af8a1865d31958d87d7", "你的DeepSeek_API_Key")
 
 #天气api配置
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY","你的openweathermap_API_KEY")
+OPENWEATHER_API_KEY = os.getenv("141785f0e77812755c9480d53959081a","你的openweathermap_API_KEY")
 
 #双城市配置
 CITIES = [
