@@ -4,11 +4,14 @@ import random
 import json
 import os
 import sys
-from typing import Optional, Dict, List
+import time
+from typing import Optional, Dict, List, Tuple
 
 # ========== 配置区 (请修改为你的配置) ==========
-# Server酱配置
-SERVERCHAN_SENDKEY = os.getenv("SERVERCHAN_SENDKEY", "SCT316026Tl8kRVxrcgR4s4hlkxMQWmvcK")
+# Server酱配置 - 支持两个SendKey，用逗号分隔
+SERVERCHAN_SENDKEYS_STR = os.getenv("SERVERCHAN_SENDKEYS", "SCT316026Tl8kRVxrcgR4s4hlkxMQWmvcK")
+# 将字符串转换为列表
+SERVERCHAN_SENDKEYS = [key.strip() for key in SERVERCHAN_SENDKEYS_STR.split(",") if key.strip()]
 
 # API配置
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-b577b49ba9204af8a1865d31958d87d7")
@@ -232,50 +235,69 @@ def get_local_cheer_line() -> str:
     
     return local_lines[index]
 
-# ========== 游戏新闻模块 ==========
+# ========== 实时游戏新闻模块 ==========
 def get_gaming_news() -> str:
-    """获取游戏热点新闻"""
-    news = try_heiyou_api()
-    if news:
-        return news
+    """获取实时游戏热点新闻 - 只使用实时API"""
+    news_sources = [
+        ("小黑盒API", try_heiyou_api),
+        ("备用游戏API", try_backup_gaming_api),
+        ("知乎游戏热榜", try_zhihu_gaming),
+        ("B站游戏资讯", try_bilibili_gaming),
+    ]
     
-    news = try_backup_gaming_api()
-    if news:
-        return news
+    for source_name, api_func in news_sources:
+        print(f"尝试{source_name}...")
+        try:
+            news = api_func()
+            if news and news.strip():
+                print(f"✅ 成功从{source_name}获取新闻")
+                return news
+        except Exception as e:
+            print(f"❌ {source_name}调用异常: {e}")
+            continue
     
-    return get_local_gaming_news()
+    # 所有实时API都失败，返回实时API错误消息
+    return "🎮 实时游戏新闻获取中..."
 
 def try_heiyou_api() -> Optional[str]:
     """尝试小黑盒API"""
     try:
         url = "https://api.xiaoheihe.cn/v3/bbs/app/api/web/index/feed"
-        params = {"limit": 10, "offset": 0, "catid": "new", "os_type": "web"}
+        params = {"limit": 20, "offset": 0, "catid": "new", "os_type": "web"}
         
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Referer": "https://www.xiaoheihe.cn/"
         }
         
-        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response = requests.get(url, params=params, headers=headers, timeout=8)
         
         if response.status_code == 200:
             data = response.json()
             articles = data.get("result", {}).get("articles", [])
             
             if articles:
+                # 过滤有效文章
                 valid_articles = []
-                for article in articles[:10]:
-                    title = article.get("title", "")
+                for article in articles[:15]:
+                    title = article.get("title", "").strip()
+                    
+                    # 过滤条件
                     if (len(title) > 8 and 
                         "抽奖" not in title and 
                         "活动" not in title and
-                        len(title) < 50):
+                        "公告" not in title and
+                        len(title) < 50 and
+                        not title.startswith("【")):
                         valid_articles.append(article)
                 
                 if valid_articles:
-                    article = random.choice(valid_articles)
+                    # 选择最新的文章
+                    article = valid_articles[0]  # 第一个是最新的
                     title = article.get("title", "")
-                    title = title.replace("&quot;", '"').replace("&#039;", "'")
+                    
+                    # 清理标题
+                    title = clean_news_title(title)
                     
                     if len(title) > 40:
                         title = title[:37] + "..."
@@ -297,85 +319,184 @@ def try_backup_gaming_api() -> Optional[str]:
             if data.get("result"):
                 news_list = data["result"]
                 if news_list:
-                    news = random.choice(news_list[:10])
-                    title = news.get("title", "")
-                    title = title.replace("&quot;", '"').replace("&#039;", "'")
-                    if len(title) > 40:
-                        title = title[:37] + "..."
-                    return f"🎮 {title}"
+                    # 获取最新的新闻（列表第一个）
+                    news = news_list[0]
+                    title = news.get("title", "").strip()
+                    
+                    if title:
+                        title = clean_news_title(title)
+                        
+                        if len(title) > 40:
+                            title = title[:37] + "..."
+                        return f"🎮 {title}"
     except Exception as e:
         print(f"备用游戏API错误: {e}")
     
     return None
 
-def get_local_gaming_news() -> str:
-    """本地游戏新闻库"""
-    gaming_news = [
-        "🎮 《黑神话：悟空》全球热度持续攀升，国产3A大作值得期待",
-        "🎮 Steam新品节开启，上百款游戏Demo免费试玩",
-        "🎮 《原神》5.0版本预告片发布，新角色引发玩家热议",
-        "🎮 Epic喜加一更新，本周免费领取《循环英雄》",
-        "🎮 《王者荣耀》新英雄上线，技能机制创新受好评",
-        "🎮 Xbox发布会公布多款大作，2026年游戏阵容强大",
-        "🎮 《星穹铁道》2.5版本更新，新星球探索开启",
-        "🎮 索尼State of Play汇总，多款PS5 Pro游戏曝光",
-        "🎮 《暗黑破坏神4》新资料片预告，死灵法师重做",
-        "🎮 独立游戏《哈迪斯2》销量破百万，续作再创辉煌",
-    ]
+def try_zhihu_gaming() -> Optional[str]:
+    """尝试知乎游戏热榜 - 获取实时热门游戏话题"""
+    try:
+        url = "https://www.zhihu.com/api/v3/feed/topstory/hot-lists/game"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://www.zhihu.com/hot"
+        }
+        
+        response = requests.get(url, headers=headers, timeout=8)
+        
+        if response.status_code == 200:
+            data = response.json()
+            items = data.get("data", [])
+            
+            if items:
+                # 获取最热门的游戏话题
+                for item in items[:5]:
+                    target = item.get("target", {})
+                    title = target.get("title", "").strip()
+                    
+                    if title and len(title) > 5:
+                        title = clean_news_title(title)
+                        if len(title) > 40:
+                            title = title[:37] + "..."
+                        return f"🎮 知乎热榜: {title}"
+    except Exception as e:
+        print(f"知乎热榜错误: {e}")
     
-    today = datetime.datetime.now()
-    index = (today.day * today.month) % len(gaming_news)
-    return gaming_news[index]
+    return None
 
-# ========== Server酱消息发送模块 ==========
-def send_serverchan_message(content: str) -> bool:
+def try_bilibili_gaming() -> Optional[str]:
+    """尝试B站游戏资讯 - 获取实时游戏动态"""
+    try:
+        url = "https://api.bilibili.com/x/web-interface/ranking/v2"
+        params = {
+            "rid": 4,  # 游戏区
+            "type": "all"
+        }
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Referer": "https://www.bilibili.com/"
+        }
+        
+        response = requests.get(url, params=params, headers=headers, timeout=8)
+        
+        if response.status_code == 200:
+            data = response.json()
+            videos = data.get("data", {}).get("list", [])
+            
+            if videos:
+                # 获取热门游戏视频
+                video = videos[0]
+                title = video.get("title", "").strip()
+                
+                if title:
+                    # 清理标题
+                    title = clean_news_title(title)
+                    title = title.replace("《", "").replace("》", "")
+                    
+                    if len(title) > 40:
+                        title = title[:37] + "..."
+                    return f"🎮 B站热门: {title}"
+    except Exception as e:
+        print(f"B站API错误: {e}")
+    
+    return None
+
+def clean_news_title(title: str) -> str:
+    """清理新闻标题中的特殊字符"""
+    if not title:
+        return ""
+    
+    replacements = {
+        "&quot;": '"',
+        "&#039;": "'",
+        "&amp;": "&",
+        "&lt;": "<",
+        "&gt;": ">",
+        "&nbsp;": " ",
+        "【": "",
+        "】": "",
+        "[]": "",
+        "()": "",
+    }
+    
+    for old, new in replacements.items():
+        title = title.replace(old, new)
+    
+    return title.strip()
+
+# ========== Server酱消息发送模块（支持双人） ==========
+def send_serverchan_message(content: str) -> Dict[str, bool]:
     """
-    通过Server酱发送微信消息
+    通过Server酱发送微信消息给两个用户
+    
     参数:
         content: 消息内容（支持Markdown）
     返回:
-        bool: 发送成功返回True，失败返回False
+        Dict[str, bool]: 每个用户的发送结果
     """
-    try:
-        if not SERVERCHAN_SENDKEY or SERVERCHAN_SENDKEY == "你的Server酱SendKey":
-            print("❌ 错误: Server酱SendKey未配置")
-            print("请在环境变量中设置 SERVERCHAN_SENDKEY")
-            return False
+    results = {}
+    
+    if not SERVERCHAN_SENDKEYS or len(SERVERCHAN_SENDKEYS) == 0:
+        print("❌ 错误: Server酱SendKey未配置")
+        print("请在环境变量中设置 SERVERCHAN_SENDKEYS")
+        return {"no_keys": False}
+    
+    # 从消息中提取标题
+    lines = content.split('\n')
+    title = lines[0] if len(lines) > 0 else "每日推送"
+    if len(title) > 30:
+        title = title[:27] + "..."
+    
+    print(f"📤 开始向 {len(SERVERCHAN_SENDKEYS)} 个用户发送消息...")
+    
+    for i, sendkey in enumerate(SERVERCHAN_SENDKEYS, 1):
+        if not sendkey or sendkey == "你的Server酱SendKey":
+            print(f"  ❌ 用户{i}: SendKey无效，跳过")
+            results[f"user{i}_invalid"] = False
+            continue
         
-        # 从消息中提取标题
-        lines = content.split('\n')
-        title = lines[0] if len(lines) > 0 else "每日推送"
-        if len(title) > 30:
-            title = title[:27] + "..."
-        
-        # Server酱 API URL
-        url = f"https://sctapi.ftqq.com/{SERVERCHAN_SENDKEY}.send"
-        
-        # 请求数据
-        data = {
-            "title": title,
-            "desp": content,
-            "channel": "9"  # 默认推送渠道：微信
-        }
-        
-        # 发送请求
-        response = requests.post(url, data=data, timeout=10)
-        result = response.json()
-        
-        # 解析响应
-        if result.get("code") == 0 or result.get("errno") == 0:
-            print(f"✅ Server酱消息发送成功！")
-            print(f"   消息ID: {result.get('data', {}).get('pushid', 'N/A')}")
-            return True
-        else:
-            print(f"❌ Server酱消息发送失败")
-            print(f"   错误码: {result.get('code', 'N/A')}")
-            print(f"   错误信息: {result.get('message', 'N/A')}")
-            return False
+        try:
+            # 隐藏SendKey显示，只显示前几位
+            masked_key = f"{sendkey[:6]}...{sendkey[-4:]}" if len(sendkey) > 10 else "***"
+            print(f"  📨 用户{i} ({masked_key})...")
             
-    except Exception as e:
-        print(f"❌ Server酱发送异常: {e}")
-        return False
+            # 避免请求频率过高，添加短暂延迟
+            if i > 1:
+                time.sleep(1)
+            
+            # Server酱 API URL
+            url = f"https://sctapi.ftqq.com/{sendkey}.send"
+            
+            # 请求数据
+            data = {
+                "title": title,
+                "desp": content,
+                "channel": "9"  # 默认推送渠道：微信
+            }
+            
+            # 发送请求
+            response = requests.post(url, data=data, timeout=10)
+            result = response.json()
+            
+            # 解析响应
+            if result.get("code") == 0 or result.get("errno") == 0:
+                print(f"    ✅ 发送成功")
+                results[f"user{i}"] = True
+            else:
+                error_msg = result.get("message", "未知错误")
+                print(f"    ❌ 发送失败: {error_msg}")
+                results[f"user{i}"] = False
+                
+        except requests.exceptions.Timeout:
+            print(f"    ⏱️  用户{i}: 请求超时")
+            results[f"user{i}_timeout"] = False
+        except Exception as e:
+            print(f"    ❌ 用户{i}: 发送异常 - {str(e)[:50]}")
+            results[f"user{i}_error"] = False
+    
+    return results
 
 # ========== 主函数模块 ==========
 def format_daily_message() -> str:
@@ -394,10 +515,13 @@ def format_daily_message() -> str:
     else:
         greeting = "🌙 夜晚安好"
     
-    # 获取天气、纪念日、情话、游戏新闻
+    # 获取天气、纪念日、情话
     weather_str = get_dual_city_weather()
     anniversary_str = calculate_anniversaries()
     cheer_line = generate_love_cheer()
+    
+    # 获取实时游戏新闻
+    print("\n4. 获取实时游戏新闻...")
     gaming_news = get_gaming_news()
     
     # 添加随机emoji装饰
@@ -420,6 +544,8 @@ def format_daily_message() -> str:
 
 ---
 ⏰ 推送时间 {now.strftime('%H:%M:%S')}
+👥 接收人数: {len(SERVERCHAN_SENDKEYS)}
+🎮 游戏新闻均为实时获取
 🤖 由 Server酱 自动推送"""
     
     return message
@@ -427,44 +553,66 @@ def format_daily_message() -> str:
 def main_handler(event=None, context=None):
     """主函数 - GitHub Actions入口"""
     print("=" * 50)
-    print(f"开始执行 Server酱 推送任务 - {datetime.datetime.now()}")
+    print(f"开始执行 Server酱 双人推送任务 - {datetime.datetime.now()}")
     print("=" * 50)
+    
+    # 显示配置的用户数量
+    print(f"📊 配置用户数: {len(SERVERCHAN_SENDKEYS)}")
+    for i, key in enumerate(SERVERCHAN_SENDKEYS, 1):
+        if len(key) > 10:
+            masked_key = f"{key[:6]}...{key[-4:]}"
+        else:
+            masked_key = "***"
+        print(f"  用户{i}: {masked_key}")
     
     try:
         # 生成消息
-        print("1. 生成每日消息...")
+        print("\n1. 生成每日消息...")
         message = format_daily_message()
         print("✓ 消息生成成功")
         print(f"消息长度: {len(message)} 字符")
         print(f"消息预览:\n{message[:200]}...")
         
         # 发送消息
-        print("\n2. 发送到 Server酱...")
-        success = send_serverchan_message(message)
+        print("\n2. 向两个用户发送消息...")
+        results = send_serverchan_message(message)
         
-        if success:
-            print("✓ Server酱推送发送成功！")
+        # 统计结果
+        success_count = sum(1 for r in results.values() if r)
+        total_count = len(results)
+        
+        print(f"\n📈 发送统计:")
+        print(f"  总计: {total_count} 个发送任务")
+        print(f"  成功: {success_count}")
+        print(f"  失败: {total_count - success_count}")
+        
+        if success_count > 0:
+            print(f"\n✅ Server酱推送完成，成功发送给 {success_count}/{total_count} 个用户")
             return {
                 "statusCode": 200,
                 "body": json.dumps({
                     "status": "success",
-                    "message": "推送发送成功",
+                    "message": f"推送成功发送给 {success_count}/{total_count} 个用户",
+                    "success_count": success_count,
+                    "total_count": total_count,
                     "timestamp": datetime.datetime.now().isoformat()
                 })
             }
         else:
-            print("✗ Server酱推送发送失败")
+            print(f"\n❌ Server酱推送失败，所有发送都失败")
             return {
                 "statusCode": 500,
                 "body": json.dumps({
                     "status": "error",
-                    "message": "Server酱发送失败",
+                    "message": "所有发送都失败",
+                    "success_count": 0,
+                    "total_count": total_count,
                     "timestamp": datetime.datetime.now().isoformat()
                 })
             }
             
     except Exception as e:
-        print(f"✗ 推送任务异常: {str(e)}")
+        print(f"\n❌ 推送任务异常: {str(e)}")
         return {
             "statusCode": 500,
             "body": json.dumps({
@@ -477,8 +625,17 @@ def main_handler(event=None, context=None):
 def local_test():
     """本地测试函数"""
     print("=" * 50)
-    print("Server酱 本地测试模式")
+    print("Server酱 双人本地测试模式")
     print("=" * 50)
+    
+    # 显示当前配置
+    print(f"当前配置 {len(SERVERCHAN_SENDKEYS)} 个用户:")
+    for i, key in enumerate(SERVERCHAN_SENDKEYS, 1):
+        if key and key != "你的Server酱SendKey":
+            masked = f"{key[:6]}...{key[-4:]}" if len(key) > 10 else "***"
+            print(f"  用户{i}: {masked}")
+        else:
+            print(f"  用户{i}: 未配置")
     
     try:
         # 1. 测试天气获取
@@ -497,8 +654,8 @@ def local_test():
             cheer = generate_love_cheer()
             print(f"情话{i+1}: {cheer}")
         
-        # 4. 测试游戏新闻获取
-        print("\n4. 测试游戏新闻获取...")
+        # 4. 测试实时游戏新闻获取
+        print("\n4. 测试实时游戏新闻获取...")
         gaming_news = get_gaming_news()
         print(f"游戏新闻: {gaming_news}")
         
@@ -513,23 +670,35 @@ def local_test():
         if is_github_actions:
             # 在 GitHub Actions 中，自动发送
             print("\n检测到 GitHub Actions 环境，自动发送消息...")
-            success = send_serverchan_message(f"🔧 Server酱测试消息\n\n{message}")
-            if success:
-                print("✅ 测试消息发送成功！")
+            test_message = f"🔧 Server酱双人测试消息\n\n{message}"
+            results = send_serverchan_message(test_message)
+            
+            # 统计结果
+            success_count = sum(1 for r in results.values() if r)
+            total_count = len(results)
+            
+            if success_count > 0:
+                print(f"✅ 测试消息发送成功给 {success_count}/{total_count} 个用户")
                 return True
             else:
-                print("❌ 测试消息发送失败")
+                print("❌ 所有测试消息发送失败")
                 return False
         else:
             # 本地环境，询问用户
-            send_test = input("\n是否发送测试消息到 Server酱？(y/n): ")
+            send_test = input("\n是否发送测试消息到两个Server酱用户？(y/n): ")
             if send_test.lower() == 'y':
-                success = send_serverchan_message(f"🔧 Server酱测试消息\n\n{message}")
-                if success:
-                    print("✅ 测试消息发送成功！")
+                test_message = f"🔧 Server酱双人测试消息\n\n{message}"
+                results = send_serverchan_message(test_message)
+                
+                # 统计结果
+                success_count = sum(1 for r in results.values() if r)
+                total_count = len(results)
+                
+                if success_count > 0:
+                    print(f"✅ 测试消息发送成功给 {success_count}/{total_count} 个用户")
                     return True
                 else:
-                    print("❌ 测试消息发送失败")
+                    print("❌ 所有测试消息发送失败")
                     return False
             else:
                 print("测试完成，未发送消息。")
@@ -548,13 +717,13 @@ if __name__ == "__main__":
     
     if is_github_actions:
         # 在 GitHub Actions 中，直接运行主推送函数
-        print("检测到 GitHub Actions 环境，执行主推送任务...")
+        print("检测到 GitHub Actions 环境，执行双人推送任务...")
         result = main_handler()
         if result.get("statusCode") == 200:
-            print("✅ 主推送执行成功")
+            print("✅ 双人推送执行成功")
             sys.exit(0)
         else:
-            print("❌ 主推送执行失败")
+            print("❌ 双人推送执行失败")
             sys.exit(1)
     else:
         # 本地环境，运行测试函数
