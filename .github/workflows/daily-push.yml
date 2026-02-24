@@ -1,4 +1,4 @@
-name: Server酱 微信推送
+name: Server酱 双人微信推送
 
 on:
   # 定时触发：每天 UTC 0:30（北京时间 8:30）
@@ -31,23 +31,26 @@ jobs:
           pip install requests
       
       # 4. 运行推送任务
-      - name: 运行推送任务
+      - name: 运行双人推送任务
         env:
-          # Server酱配置
-          SERVERCHAN_SENDKEY: ${{ secrets.SERVERCHAN_SENDKEY }}
+          # Server酱配置 - 两个SendKey用逗号分隔
+          SERVERCHAN_SENDKEYS: ${{ secrets.SERVERCHAN_SENDKEYS }}
           
           # 其他API配置
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        run: python main.py
+        run: |
+          echo "开始执行 Server酱 双人推送..."
+          echo "配置用户数: $(echo '${{ secrets.SERVERCHAN_SENDKEYS }}' | tr ',' '\n' | wc -l)"
+          python main.py
       
       # 5. 任务完成通知
       - name: 任务状态
         if: always()
         run: |
           if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Server酱推送任务执行成功！"
+            echo "✅ Server酱双人推送任务执行成功！"
           else
-            echo "❌ Server酱推送任务执行失败"
+            echo "❌ Server酱双人推送任务执行失败"
             echo "请查看上方日志排查问题"
           fi
