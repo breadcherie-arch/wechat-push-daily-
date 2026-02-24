@@ -7,11 +7,8 @@ import sys
 from typing import Optional, Dict, List
 
 # ========== 配置区 (请修改为你的配置) ==========
-# 企业微信配置
-CORP_ID = os.getenv("CORP_ID", "ww501bda5f38352e79")
-AGENT_ID = os.getenv("AGENT_ID", "1000002")
-AGENT_SECRET = os.getenv("AGENT_SECRET", "iyYfsscluT0XBcVMZpFOSZhw0mCoxk_gTudgf1PGeCg")
-TO_USER = "@all"
+# Server酱配置
+SERVERCHAN_SENDKEY = os.getenv("SERVERCHAN_SENDKEY", "SCT316026Tl8kRVxrcgR4s4hlkxMQWmvcK")
 
 # API配置
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-b577b49ba9204af8a1865d31958d87d7")
@@ -330,50 +327,54 @@ def get_local_gaming_news() -> str:
     index = (today.day * today.month) % len(gaming_news)
     return gaming_news[index]
 
-# ========== 消息发送模块 ==========
-def get_access_token() -> Optional[str]:
-    """获取企业微信访问令牌"""
+# ========== Server酱消息发送模块 ==========
+def send_serverchan_message(content: str) -> bool:
+    """
+    通过Server酱发送微信消息
+    参数:
+        content: 消息内容（支持Markdown）
+    返回:
+        bool: 发送成功返回True，失败返回False
+    """
     try:
-        url = f"https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid={CORP_ID}&corpsecret={AGENT_SECRET}"
-        response = requests.get(url, timeout=5)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return data.get("access_token")
-    except Exception as e:
-        print(f"获取token错误: {e}")
-    return None
-
-def send_wechat_message(content: str) -> bool:
-    """发送消息到企业微信应用"""
-    try:
-        token = get_access_token()
-        if not token:
-            print("获取企业微信token失败")
+        if not SERVERCHAN_SENDKEY or SERVERCHAN_SENDKEY == "你的Server酱SendKey":
+            print("❌ 错误: Server酱SendKey未配置")
+            print("请在环境变量中设置 SERVERCHAN_SENDKEY")
             return False
         
-        url = f"https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token={token}"
+        # 从消息中提取标题
+        lines = content.split('\n')
+        title = lines[0] if len(lines) > 0 else "每日推送"
+        if len(title) > 30:
+            title = title[:27] + "..."
         
+        # Server酱 API URL
+        url = f"https://sctapi.ftqq.com/{SERVERCHAN_SENDKEY}.send"
+        
+        # 请求数据
         data = {
-            "touser": TO_USER,
-            "msgtype": "markdown",
-            "agentid": int(AGENT_ID),
-            "markdown": {"content": content},
-            "safe": 0
+            "title": title,
+            "desp": content,
+            "channel": "9"  # 默认推送渠道：微信
         }
         
-        response = requests.post(url, json=data, timeout=10)
+        # 发送请求
+        response = requests.post(url, data=data, timeout=10)
         result = response.json()
         
-        if result.get("errcode") == 0:
-            print("企业微信消息发送成功！")
+        # 解析响应
+        if result.get("code") == 0 or result.get("errno") == 0:
+            print(f"✅ Server酱消息发送成功！")
+            print(f"   消息ID: {result.get('data', {}).get('pushid', 'N/A')}")
             return True
         else:
-            print(f"企业微信消息发送失败: {result}")
+            print(f"❌ Server酱消息发送失败")
+            print(f"   错误码: {result.get('code', 'N/A')}")
+            print(f"   错误信息: {result.get('message', 'N/A')}")
             return False
             
     except Exception as e:
-        print(f"发送消息错误: {e}")
+        print(f"❌ Server酱发送异常: {e}")
         return False
 
 # ========== 主函数模块 ==========
@@ -393,8 +394,8 @@ def format_daily_message() -> str:
     else:
         greeting = "🌙 夜晚安好"
     
-    # 修正：使用正确的函数名
-    weather_str = get_dual_city_weather()  # 原来是 get_weather()，但未定义
+    # 获取天气、纪念日、情话、游戏新闻
+    weather_str = get_dual_city_weather()
     anniversary_str = calculate_anniversaries()
     cheer_line = generate_love_cheer()
     gaming_news = get_gaming_news()
@@ -419,14 +420,14 @@ def format_daily_message() -> str:
 
 ---
 ⏰ 推送时间 {now.strftime('%H:%M:%S')}
-💝 美好的一天，从我的问候开始"""
+🤖 由 Server酱 自动推送"""
     
     return message
 
 def main_handler(event=None, context=None):
-    """主函数 - 云函数入口"""
+    """主函数 - GitHub Actions入口"""
     print("=" * 50)
-    print(f"开始执行每日推送任务 - {datetime.datetime.now()}")
+    print(f"开始执行 Server酱 推送任务 - {datetime.datetime.now()}")
     print("=" * 50)
     
     try:
@@ -438,11 +439,11 @@ def main_handler(event=None, context=None):
         print(f"消息预览:\n{message[:200]}...")
         
         # 发送消息
-        print("\n2. 发送到企业微信...")
-        success = send_wechat_message(message)
+        print("\n2. 发送到 Server酱...")
+        success = send_serverchan_message(message)
         
         if success:
-            print("✓ 推送发送成功！")
+            print("✓ Server酱推送发送成功！")
             return {
                 "statusCode": 200,
                 "body": json.dumps({
@@ -452,31 +453,18 @@ def main_handler(event=None, context=None):
                 })
             }
         else:
-            print("✗ 推送发送失败")
+            print("✗ Server酱推送发送失败")
             return {
                 "statusCode": 500,
                 "body": json.dumps({
                     "status": "error",
-                    "message": "企业微信发送失败",
+                    "message": "Server酱发送失败",
                     "timestamp": datetime.datetime.now().isoformat()
                 })
             }
             
     except Exception as e:
         print(f"✗ 推送任务异常: {str(e)}")
-        
-        # 尝试发送错误通知
-        try:
-            error_msg = f"""⚠️ 每日推送生成失败
-
-错误信息: {str(e)[:100]}
-时间: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-请检查配置或查看日志。"""
-            send_wechat_message(error_msg)
-        except:
-            pass
-            
         return {
             "statusCode": 500,
             "body": json.dumps({
@@ -487,15 +475,15 @@ def main_handler(event=None, context=None):
         }
 
 def local_test():
-    """本地测试函数 - 修复版本"""
+    """本地测试函数"""
     print("=" * 50)
-    print("本地测试模式")
+    print("Server酱 本地测试模式")
     print("=" * 50)
     
     try:
         # 1. 测试天气获取
         print("\n1. 测试天气获取...")
-        weather = get_dual_city_weather()  # 修正：使用正确的函数名
+        weather = get_dual_city_weather()
         print(f"天气:\n{weather}")
         
         # 2. 测试纪念日计算
@@ -514,9 +502,9 @@ def local_test():
         gaming_news = get_gaming_news()
         print(f"游戏新闻: {gaming_news}")
         
-        # 5. 生成完整消息 - 确保message变量被定义
+        # 5. 生成完整消息
         print("\n5. 生成完整消息...")
-        message = format_daily_message()  # 定义message变量
+        message = format_daily_message()
         print(f"\n完整消息:\n{message}")
         
         # 检查是否在 GitHub Actions 环境中
@@ -525,7 +513,7 @@ def local_test():
         if is_github_actions:
             # 在 GitHub Actions 中，自动发送
             print("\n检测到 GitHub Actions 环境，自动发送消息...")
-            success = send_wechat_message(f"🔧 测试消息\n\n{message}")
+            success = send_serverchan_message(f"🔧 Server酱测试消息\n\n{message}")
             if success:
                 print("✅ 测试消息发送成功！")
                 return True
@@ -534,9 +522,9 @@ def local_test():
                 return False
         else:
             # 本地环境，询问用户
-            send_test = input("\n是否发送测试消息到企业微信？(y/n): ")
+            send_test = input("\n是否发送测试消息到 Server酱？(y/n): ")
             if send_test.lower() == 'y':
-                success = send_wechat_message(f"🔧 测试消息\n\n{message}")
+                success = send_serverchan_message(f"🔧 Server酱测试消息\n\n{message}")
                 if success:
                     print("✅ 测试消息发送成功！")
                     return True
