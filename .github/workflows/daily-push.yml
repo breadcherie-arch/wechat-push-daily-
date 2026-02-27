@@ -1,0 +1,100 @@
+name: Server酱 双人微信推送
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  send-message:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置Python环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: "pip"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: 计算JST时间门控
+        id: gate
+        shell: bash
+        run: |
+          JST_NOW=$(TZ=Asia/Tokyo date +%H:%M)
+          JST_DATE=$(TZ=Asia/Tokyo date +%Y-%m-%d)
+          HOUR=$(TZ=Asia/Tokyo date +%H)
+          MIN=$(TZ=Asia/Tokyo date +%M)
+
+          echo "jst_now=$JST_NOW" >> "$GITHUB_OUTPUT"
+          echo "jst_date=$JST_DATE" >> "$GITHUB_OUTPUT"
+
+          # 手动触发始终允许
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "reason=manual_dispatch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 定时触发仅允许 JST 09:30-09:59
+          if [ "$HOUR" = "09" ] && [ "$MIN" -ge 30 ] && [ "$MIN" -le 59 ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "reason=in_jst_window" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "reason=out_of_jst_window" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 输出门控信息
+        run: |
+          echo "event=${{ github.event_name }}"
+          echo "jst_now=${{ steps.gate.outputs.jst_now }}"
+          echo "jst_date=${{ steps.gate.outputs.jst_date }}"
+          echo "should_run=${{ steps.gate.outputs.should_run }}"
+          echo "reason=${{ steps.gate.outputs.reason }}"
+
+      # 仅 schedule 且命中时间窗时检查“当天是否已发送”
+      - name: 恢复当天发送锁
+        if: github.event_name == 'schedule' && steps.gate.outputs.should_run == 'true'
+        id: lock_restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .push-lock
+          key: push-lock-${{ steps.gate.outputs.jst_date }}
+
+      - name: 已发送则跳过
+        if: github.event_name == 'schedule' && steps.gate.outputs.should_run == 'true' && steps.lock_restore.outputs.cache-hit == 'true'
+        run: echo "今天已自动发送，跳过本次。"
+
+      - name: 运行推送任务
+        if: steps.gate.outputs.should_run == 'true' && (github.event_name != 'schedule' || steps.lock_restore.outputs.cache-hit != 'true')
+        env:
+          SERVERCHAN_SENDKEYS: ${{ secrets.SERVERCHAN_SENDKEYS }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          # 如需调试可打开：
+          # DEBUG_NEWS_API: "1"
+        run: |
+          echo "开始执行 Server酱 双人推送..."
+          python main.py
+
+      - name: 写入当天发送锁
+        if: github.event_name == 'schedule' && steps.gate.outputs.should_run == 'true' && steps.lock_restore.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .push-lock
+          echo "sent_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .push-lock/sent.txt
+          cat .push-lock/sent.txt
+
+      - name: 保存当天发送锁
+        if: github.event_name == 'schedule' && steps.gate.outputs.should_run == 'true' && steps.lock_restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .push-lock
+          key: push-lock-${{ steps.gate.outputs.jst_date }}
