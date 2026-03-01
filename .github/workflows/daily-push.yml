@@ -43,8 +43,8 @@ jobs:
             exit 0
           fi
 
-          # 定时触发仅允许 JST 09:30-09:59
-          if [ "$HOUR" = "09" ] && [ "$MIN" -ge 30 ] && [ "$MIN" -le 59 ]; then
+          # 定时触发仅允许 JST 08:00-09:59
+          if { [ "$HOUR" = "08" ] ; } || { [ "$HOUR" = "09" ] ; }; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
             echo "reason=in_jst_window" >> "$GITHUB_OUTPUT"
           else
