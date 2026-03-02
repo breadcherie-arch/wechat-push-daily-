@@ -609,12 +609,12 @@ def format_daily_message() -> str:
     
     # 早上还是晚上问候
     hour = now.hour
-    if 5 <= hour < 12:
+#    if 5 <= hour < 12:
         greeting = "🌅 清晨问候"
-    elif 12 <= hour < 18:
-        greeting = "☀️ 午后时光"
-    else:
-        greeting = "🌙 夜晚安好"
+#    elif 12 <= hour < 18:
+#        greeting = "☀️ 午后时光"
+#    else:
+#        greeting = "🌙 夜晚安好"
     
     # 获取天气、纪念日、情话
     weather_str = get_dual_city_weather()
