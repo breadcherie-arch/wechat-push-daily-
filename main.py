@@ -607,14 +607,7 @@ def format_daily_message() -> str:
     # 获取各个部分
     date_str = now.strftime("%Y年%m月%d日 星期") + ["一", "二", "三", "四", "五", "六", "日"][now.weekday()]
     
-    # 早上还是晚上问候
-    hour = now.hour
-#    if 5 <= hour < 12:
-        greeting = "🌅 清晨问候"
-#    elif 12 <= hour < 18:
-#        greeting = "☀️ 午后时光"
-#    else:
-#        greeting = "🌙 夜晚安好"
+    greeting = "🌅 清晨问候"
     
     # 获取天气、纪念日、情话
     weather_str = get_dual_city_weather()
