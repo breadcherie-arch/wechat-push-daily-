@@ -78,7 +78,7 @@ jobs:
         env:
           SERVERCHAN_SENDKEYS: ${{ secrets.SERVERCHAN_SENDKEYS }}
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           # 如需调试可打开：
           # DEBUG_NEWS_API: "1"
         run: |
