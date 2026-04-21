@@ -53,8 +53,15 @@ def call_gemini(prompt: str, system_instruction: str = "", max_tokens: int = 150
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            text = text.strip('"').strip("'").strip("「」").strip()
+            parts = data["candidates"][0]["content"]["parts"]
+            # 跳过思考过程，找第一个有 text 且非 thought 的 part
+            text = next(
+                (p["text"] for p in parts if "text" in p and not p.get("thought")),
+                None
+            )
+            if not text:
+                return None
+            text = text.strip().strip('"').strip("'").strip("「」").strip()
             return text
         else:
             print(f"Gemini API 状态码: {response.status_code}, 内容: {response.text[:100]}")
@@ -205,7 +212,7 @@ def generate_love_cheer() -> str:
     prompt = (
         f"今天是{date_str}，{days_context}"
         f"请用{style}的风格，写一句男友发给女友的早安鼓励语。"
-        f"要求：15-25字，有细节感和温度，不说（今天）这个词，不要鸡汤套话，"
+        f'要求：15-25字，有细节感和温度，不说"今天"这个词，不要鸡汤套话，'
         f"不要开头解释风格，直接输出句子。"
     )
 
