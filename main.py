@@ -38,7 +38,7 @@ def call_gemini(prompt: str, system_instruction: str = "", max_tokens: int = 150
     try:
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"gemini-2.0-flash-001:generateContent?key={GEMINI_API_KEY}"
+            f"gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
         )
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
