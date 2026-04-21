@@ -45,6 +45,7 @@ def call_gemini(prompt: str, system_instruction: str = "", max_tokens: int = 150
             "generationConfig": {
                 "maxOutputTokens": max_tokens,
                 "temperature": 0.95,
+                "thinkingConfig": {"thinkingBudget": 0},
             }
         }
         if system_instruction:
@@ -53,8 +54,9 @@ def call_gemini(prompt: str, system_instruction: str = "", max_tokens: int = 150
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            parts = data["candidates"][0]["content"]["parts"]
-            # 跳过思考过程，找第一个有 text 且非 thought 的 part
+            candidate = data.get("candidates", [{}])[0]
+            content = candidate.get("content", {})
+            parts = content.get("parts", [])
             text = next(
                 (p["text"] for p in parts if "text" in p and not p.get("thought")),
                 None
